@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 export default function ResultsPage() {
   const { roomCode } = useParams();
   const navigate = useNavigate();
@@ -9,7 +11,7 @@ export default function ResultsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch(`/api/sessions/${roomCode}/results`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_URL}/api/sessions/${roomCode}/results`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { if (d.error) setError(d.error); else setData(d); })
       .catch(() => setError('Failed to load results'));
