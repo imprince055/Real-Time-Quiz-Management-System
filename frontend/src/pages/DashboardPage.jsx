@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 export default function DashboardPage() {
   const [quizzes, setQuizzes] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -11,17 +13,24 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
-  useEffect(() => {
-    fetch('/api/quizzes', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(setQuizzes)
-      .catch(() => setError('Failed to load quizzes'));
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(setProfile)
-      .catch(() => {});
-  }, [token]);
+useEffect(() => {
+  fetch(`${API_URL}/api/quizzes`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+    .then(r => r.json())
+    .then(setQuizzes)
+    .catch(() => setError('Failed to load quizzes'));
+
+  fetch(`${API_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+    .then(r => r.json())
+    .then(setProfile)
+    .catch(() => {});
+}, [token]);
 
   async function startSession(quizId) {
-    const res = await fetch('/api/sessions', {
+    const res = await fetch(`${API_URL}/api/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ quizId }),
@@ -32,7 +41,7 @@ export default function DashboardPage() {
   }
 
   async function viewResults(quizId) {
-    const res = await fetch(`/api/sessions/quiz/${quizId}/all`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${API_URL}/api/sessions/quiz/${quizId}/all`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     if (!data.length) return showToast('No completed sessions yet');
     navigate(`/results/${data[0].roomCode}`);
