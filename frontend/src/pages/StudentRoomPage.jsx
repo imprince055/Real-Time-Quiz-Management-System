@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 export default function StudentRoomPage() {
   const { roomCode } = useParams();
   const navigate = useNavigate();
@@ -58,11 +60,14 @@ export default function StudentRoomPage() {
 
   // Socket setup
   useEffect(() => {
-    if (!displayName) { navigate(`/join/${roomCode}`); return; }
-    const socket = io();
+    if (!displayName) { navigate(`/join/${roomCode}`); 
+    return; 
+  }
+    const socket = io(API_URL);
     socketRef.current = socket;
     socket.emit('join_room', {
-      roomCode, displayName,
+      roomCode, 
+      displayName,
       rollNumber: sessionStorage.getItem('rollNumber') || '',
       section: sessionStorage.getItem('section') || '',
       course: sessionStorage.getItem('course') || '',

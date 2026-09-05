@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 export default function TeacherRoomPage() {
   const { roomCode } = useParams();
   const navigate = useNavigate();
@@ -24,14 +26,18 @@ export default function TeacherRoomPage() {
   function copyLink() { navigator.clipboard.writeText(joinUrl); showToast('✅ Link copied!'); }
 
   useEffect(() => {
-    const socket = io({ auth: { token } });
+    const socket = io(API_URL, { auth: { token } });
     socketRef.current = socket;
     socket.emit('join_room', { roomCode, token });
     socket.on('session_state', (data) => { setState(data.state); setParticipants(data.participants || []); });
     socket.on('student_joined', ({ displayName }) => {
       setParticipants((prev) => prev.find((p) => p.displayName === displayName) ? prev : [...prev, { displayName }]);
     });
-    socket.on('question_display', (q) => { setQuestion(q); setState('active'); setShowSubmit(false); });
+    socket.on('question_display', (q) => {
+  setQuestion(q);
+  setState('active');
+  setShowSubmit(q.index === q.total - 1);
+});
     socket.on('show_submit', () => setShowSubmit(true));
     socket.on('all_results', ({ results }) => { setResults(results); setState('completed'); clearInterval(timerRef.current); });
     socket.on('error', ({ message }) => setError(message));

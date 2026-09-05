@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -12,7 +14,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -40,7 +42,7 @@ export default function RegisterPage() {
           <button style={S.btn} type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</button>
         </form>
         <div style={S.divider}><span style={S.dividerText}>or</span></div>
-        <a href="http://localhost:4000/api/auth/google" style={S.googleBtn}>
+        <a href={`${API_URL}/api/auth/google`} style={S.googleBtn}>
           <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="G" style={{ marginRight: 10 }} />
           Sign up with Google
         </a>
