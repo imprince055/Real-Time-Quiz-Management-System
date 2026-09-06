@@ -6,7 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 export default function StudentDashboardPage() {
   const [profile, setProfile] = useState(null);
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('studentToken');
 
   useEffect(() => {
     if (!token) { navigate('/student/login'); return; }
@@ -26,8 +26,7 @@ export default function StudentDashboardPage() {
   }, [token, navigate]);
 
   function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
+    localStorage.removeItem('studentToken');
     navigate('/student/login');
   }
 

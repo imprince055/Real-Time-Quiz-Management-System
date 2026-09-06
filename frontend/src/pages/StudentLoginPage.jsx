@@ -22,8 +22,7 @@ export default function StudentLoginPage() {
       const data = await res.json();
       if (!res.ok) return setError(data.error || 'Login failed');
       if (data.role !== 'student') return setError('This account is not a student account');
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('role', 'student');
+      localStorage.setItem('studentToken', data.token);
       navigate('/student/dashboard');
     } catch {
       setError('Network error');

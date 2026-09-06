@@ -6,7 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 export default function ResultsPage() {
   const { roomCode } = useParams();
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('teacherToken');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 

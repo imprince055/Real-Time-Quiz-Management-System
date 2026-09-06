@@ -11,7 +11,7 @@ export default function DashboardPage() {
   const [showProfile, setShowProfile] = useState(false);
   const [hovered, setHovered] = useState(null);
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('teacherToken');
 
 useEffect(() => {
   fetch(`${API_URL}/api/quizzes`, {
@@ -52,7 +52,7 @@ useEffect(() => {
     setTimeout(() => setToast(''), 3000);
   }
 
-  function logout() { localStorage.removeItem('token'); navigate('/login'); }
+  function logout() { localStorage.removeItem('teacherToken'); navigate('/login'); }
 
   const totalQuestions = quizzes.reduce((a, q) => a + (q.questions?.length || 0), 0);
 

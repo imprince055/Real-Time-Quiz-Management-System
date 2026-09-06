@@ -18,7 +18,7 @@ export default function TeacherRoomPage() {
   const timerRef = useRef(null);
   const [toast, setToast] = useState('');
   const [activityLog, setActivityLog] = useState([]); // tab switch alerts
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('teacherToken');
   const joinUrl = `${window.location.origin}/join/${roomCode}`;
   const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
 

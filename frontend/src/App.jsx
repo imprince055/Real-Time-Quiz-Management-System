@@ -15,14 +15,13 @@ import ResultsPage from './pages/ResultsPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 
 function TeacherRoute({ children }) {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('teacherToken');
   return token ? children : <Navigate to="/login" replace />;
 }
 
 function StudentRoute({ children }) {
-  const token = localStorage.getItem('token');
-  const role = localStorage.getItem('role');
-  return token && role === 'student' ? children : <Navigate to="/student/login" replace />;
+  const token = localStorage.getItem('studentToken');
+  return token ? children : <Navigate to="/student/login" replace />;
 }
 
 export default function App() {

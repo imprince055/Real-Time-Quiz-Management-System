@@ -13,7 +13,7 @@ export default function CreateQuizPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('teacherToken');
 
   function updateQuestion(i, field, value) {
     setQuestions(qs => qs.map((q, idx) => idx === i ? { ...q, [field]: value } : q));

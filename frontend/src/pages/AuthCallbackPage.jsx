@@ -10,8 +10,11 @@ export default function AuthCallbackPage() {
     const role = params.get('role') || 'teacher';
     const error = params.get('error');
     if (token) {
-      localStorage.setItem('token', token);
-      localStorage.setItem('role', role);
+      if (role === 'student') {
+        localStorage.setItem('studentToken', token);
+      } else {
+        localStorage.setItem('teacherToken', token);
+      }
       navigate(role === 'student' ? '/student/dashboard' : '/dashboard', { replace: true });
     } else {
       navigate('/login?error=' + (error || 'unknown'), { replace: true });

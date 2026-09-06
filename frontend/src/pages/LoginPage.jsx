@@ -21,7 +21,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) return setError(data.error || 'Login failed');
-      localStorage.setItem('token', data.token);
+      localStorage.setItem('teacherToken', data.token);
       navigate('/dashboard');
     } catch {
       setError('Network error — is the backend running?');
