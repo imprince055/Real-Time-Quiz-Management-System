@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 function emptyQuestion() {
   return { text: '', options: ['', ''], correctAnswer: '' };
 }
@@ -38,20 +40,34 @@ export default function CreateQuizPage() {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('/api/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title, questions }),
-      });
-      const data = await res.json();
-      if (!res.ok) return setError(data.error || 'Failed to create quiz');
-      navigate('/dashboard');
-    } catch { setError('Network error'); }
-    finally { setLoading(false); }
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+
+  try {
+    const res = await fetch(`${API_URL}/api/quizzes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ title, questions }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return setError(data.error || 'Failed to create quiz');
+    }
+
+    navigate('/dashboard');
+  } catch (err) {
+    console.error('Create quiz error:', err);
+    setError(`Network error: ${err.message}`);
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div style={S.page}>
