@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Session = require('../models/Session');
 const Quiz = require('../models/Quiz');
 const authMiddleware = require('../middleware/auth');
+const { getLeaderboard } = require('../services/scoreService');
 
 const router = express.Router();
 
@@ -56,6 +57,23 @@ router.get('/quiz/:quizId/all', authMiddleware, async (req, res) => {
     const sessions = await Session.find({ quizId: req.params.quizId, state: 'completed' }).sort({ createdAt: -1 });
     res.json(sessions);
   } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/:sessionId/leaderboard', authMiddleware, async (req, res) => {
+  try {
+    const session = await Session.findById(req.params.sessionId).populate('quizId');
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    if (session.quizId.teacherId.toString() !== req.teacher.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const leaderboard = await getLeaderboard(req.params.sessionId);
+    res.json(leaderboard);
+  } catch (err) {
+    console.error('leaderboard error', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

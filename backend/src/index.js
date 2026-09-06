@@ -23,6 +23,7 @@ app.use(passport.initialize());
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/quizzes', require('./routes/quizzes'));
 app.use('/api/sessions', require('./routes/sessions'));
+app.use('/api/students', require('./routes/students'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

@@ -64,14 +64,23 @@ export default function TeacherRoomPage() {
 
   // RESULTS
   if (state === 'completed' && results) {
-    const sorted = [...results].sort((a, b) => b.score - a.score);
+    const sorted = [...results].sort((a, b) => {
+      // Use backend rank if present, otherwise fall back to correctAnswers DESC / timeTaken ASC
+      if (a.rank !== undefined && b.rank !== undefined) return a.rank - b.rank;
+      if (b.correctAnswers !== a.correctAnswers) return b.correctAnswers - a.correctAnswers;
+      return (a.timeTaken ?? 0) - (b.timeTaken ?? 0);
+    });
 
     function exportCSV() {
-      const rows = [['Rank', 'Name', 'Score', 'Total', 'Percentage']];
+      const rows = [['Rank', 'Name', 'Correct', 'Incorrect', 'Score', 'Total', 'Percentage', 'Time (s)']];
       sorted.forEach((r, i) => {
-        rows.push([i + 1, r.displayName, r.score, r.total, Math.round((r.score / r.total) * 100) + '%']);
+        const rank = r.rank ?? i + 1;
+        const correct   = r.correctAnswers ?? r.score ?? 0;
+        const incorrect = r.incorrectAnswers ?? (r.total - correct);
+        const pct = r.percentage ?? Math.round((correct / (r.total || r.totalQuestions || 1)) * 100);
+        rows.push([rank, r.displayName, correct, incorrect, correct, r.total || r.totalQuestions, pct + '%', r.timeTaken ?? '—']);
       });
-      const csv = rows.map(r => r.join(',')).join('\n');
+      const csv = rows.map((r) => r.join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -89,22 +98,45 @@ export default function TeacherRoomPage() {
           <span style={S.topbarTitle}>🏆 QUIZ CONTROL PANEL <span style={S.topbarSub}>— Final Results</span></span>
           <span style={S.topbarRight}>Room: <b>{roomCode}</b></span>
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}>
           <div style={S.resultsCard}>
-            <div style={S.resultsTitle}>🎉 FINAL RESULTS</div>
+            <div style={S.resultsTitle}>🎉 FINAL LEADERBOARD</div>
+            {/* Column headers */}
+            <div style={{ ...S.resultRow, background: 'transparent', borderBottom: '1px solid #334155', marginBottom: 4, paddingBottom: 8 }}>
+              <span style={{ ...S.rank, color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>RANK</span>
+              <span style={{ ...S.rName, color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>STUDENT</span>
+              <span style={{ ...S.rScore, color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: 1, minWidth: 70, textAlign: 'right' }}>CORRECT</span>
+              <span style={{ ...S.rScore, color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: 1, minWidth: 70, textAlign: 'right' }}>WRONG</span>
+              <span style={{ ...S.rScore, color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: 1, minWidth: 60, textAlign: 'right' }}>TIME</span>
+              <span style={{ ...S.rPct, background: 'transparent', color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>%</span>
+            </div>
             <div style={S.resultsTable}>
-              {sorted.map((r, i) => (
-                <div key={r.displayName} style={{ ...S.resultRow, background: i === 0 ? '#fef9c3' : i === 1 ? '#f1f5f9' : '#fff' }}>
-                  <span style={S.rank}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
-                  <span style={S.rName}>{r.displayName}</span>
-                  <span style={S.rScore}>{r.score} / {r.total}</span>
-                  <span style={S.rPct}>{Math.round((r.score / r.total) * 100)}%</span>
-                </div>
-              ))}
+              {sorted.map((r, i) => {
+                const rank      = r.rank ?? i + 1;
+                const correct   = r.correctAnswers   ?? r.score ?? 0;
+                const incorrect = r.incorrectAnswers ?? ((r.total ?? r.totalQuestions ?? 0) - correct);
+                const total     = r.total ?? r.totalQuestions ?? 0;
+                const pct       = r.percentage ?? (total > 0 ? Math.round((correct / total) * 100) : 0);
+                const timeTaken = r.timeTaken;
+                return (
+                  <div key={r.displayName} style={{ ...S.resultRow, background: i === 0 ? '#fef9c3' : i === 1 ? '#f1f5f9' : '#fff' }}>
+                    <span style={S.rank}>{rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`}</span>
+                    <span style={S.rName}>{r.displayName}</span>
+                    <span style={{ ...S.rScore, minWidth: 70, textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>{correct}/{total}</span>
+                    <span style={{ ...S.rScore, minWidth: 70, textAlign: 'right', color: '#dc2626' }}>{incorrect}</span>
+                    <span style={{ ...S.rScore, minWidth: 60, textAlign: 'right', color: '#475569' }}>
+                      {timeTaken != null ? `${timeTaken}s` : '—'}
+                    </span>
+                    <span style={{ ...S.rPct, background: pct >= 70 ? '#dcfce7' : pct >= 40 ? '#fef9c3' : '#fee2e2', color: pct >= 70 ? '#16a34a' : pct >= 40 ? '#92400e' : '#dc2626' }}>
+                      {pct}%
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-              <button onClick={exportCSV} style={S.exportBtn}>📥 Export Results</button>
-              <button onClick={() => navigate('/dashboard')} style={S.homeBtn}>🏠 Home</button>
+              <button onClick={exportCSV} style={S.exportBtn}>📥 Export CSV</button>
+              <button onClick={() => navigate('/dashboard')} style={S.homeBtn}>🏠 Dashboard</button>
             </div>
           </div>
         </div>
