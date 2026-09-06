@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 export default function StudentDashboardPage() {
   const [profile, setProfile] = useState(null);
   const navigate = useNavigate();
@@ -8,7 +10,9 @@ export default function StudentDashboardPage() {
 
   useEffect(() => {
     if (!token) { navigate('/student/login'); return; }
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` }
+    })
       .then(r => r.json())
       .then(data => {
         if (data.error || data.role !== 'student') { navigate('/student/login'); return; }
