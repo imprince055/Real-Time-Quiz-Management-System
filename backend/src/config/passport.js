@@ -4,9 +4,20 @@ const User = require('../models/User');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:4000';
 
-// ── Shared helper ────────────────────────────────────────────────────────────
-// Finds or creates a User by Google profile.
-// `intendedRole` is set by the server — never trusted from the client.
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper: find or create a User, always ensuring the intended role.
+//
+// Multi-role behaviour:
+//   - If the email already exists with ANY role combination → find that user
+//     and ADD the intendedRole if it isn't already present (no conflict).
+//   - If the email does not exist → create a new User with that role.
+//   - Never reject based on role mismatch — just add the new role.
+//   - Never create duplicate User documents for the same email.
+//
+// Returns { user, isNew }
+//   user  — the User document (already saved with updated roles)
+//   isNew — true if the User document was just created (no previous record)
+// ─────────────────────────────────────────────────────────────────────────────
 async function findOrCreateGoogleUser(profile, intendedRole) {
   const email      = profile.emails[0].value.toLowerCase();
   const googleName = profile.displayName || email.split('@')[0];
@@ -15,39 +26,43 @@ async function findOrCreateGoogleUser(profile, intendedRole) {
   let user = await User.findOne({ email });
 
   if (user) {
-    // Security: if the account belongs to the OTHER role, refuse silently
-    // (caller will handle the error via the `conflict` flag).
-    if (user.role !== intendedRole) {
-      return { user: null, isNew: false, conflict: true };
-    }
-    // Refresh Google data on every login
+    // Update Google metadata on every login
     user.photoUrl = photoUrl;
     if (!user.googleId) user.googleId = profile.id;
-    // For students, update displayName from Google only if it was blank
-    if (intendedRole === 'student' && !user.displayName) user.displayName = googleName;
+
     // For teachers, always refresh displayName from Google
     if (intendedRole === 'teacher') user.displayName = googleName;
+    // For students, update displayName from Google only if blank
+    if (intendedRole === 'student' && !user.displayName) user.displayName = googleName;
+
+    // Add the intended role if not already present (multi-role support)
+    const effective = user.getRoles();
+    if (!effective.includes(intendedRole)) {
+      user.roles = [...new Set([...effective, intendedRole])];
+      user.role  = user.roles[0]; // keep legacy field in sync
+    }
+
     await user.save();
-    return { user, isNew: false, conflict: false };
+    return { user, isNew: false };
   }
 
-  // New account
+  // New user — create with the intended role
   user = await User.create({
     email,
     displayName:  googleName,
     googleId:     profile.id,
     passwordHash: 'google-oauth',
-    role:         intendedRole,
+    roles:        [intendedRole],
+    role:         intendedRole,   // legacy compat
     photoUrl,
-    // Student-specific fields start blank; filled via profile-setup page
     rollNumber: '',
     section:    '',
     course:     '',
   });
-  return { user, isNew: true, conflict: false };
+  return { user, isNew: true };
 }
 
-// ── Strategy 1: Teacher Google Login (existing — unchanged behaviour) ─────────
+// ── Strategy 1: Teacher Google Login ─────────────────────────────────────────
 passport.use('google-teacher', new GoogleStrategy(
   {
     clientID:     process.env.GOOGLE_CLIENT_ID,
@@ -56,11 +71,7 @@ passport.use('google-teacher', new GoogleStrategy(
   },
   async (_access, _refresh, profile, done) => {
     try {
-      const { user, conflict } = await findOrCreateGoogleUser(profile, 'teacher');
-      if (conflict) {
-        // Email belongs to a student account — send to error page
-        return done(null, false, { message: 'account_is_student' });
-      }
+      const { user } = await findOrCreateGoogleUser(profile, 'teacher');
       return done(null, user);
     } catch (err) {
       return done(err, null);
@@ -68,7 +79,7 @@ passport.use('google-teacher', new GoogleStrategy(
   }
 ));
 
-// ── Strategy 2: Student Google Login (new) ────────────────────────────────────
+// ── Strategy 2: Student Google Login ─────────────────────────────────────────
 passport.use('google-student', new GoogleStrategy(
   {
     clientID:     process.env.GOOGLE_CLIENT_ID,
@@ -77,12 +88,8 @@ passport.use('google-student', new GoogleStrategy(
   },
   async (_access, _refresh, profile, done) => {
     try {
-      const { user, isNew, conflict } = await findOrCreateGoogleUser(profile, 'student');
-      if (conflict) {
-        // Email belongs to a teacher account
-        return done(null, false, { message: 'account_is_teacher' });
-      }
-      // Attach isNew so the callback route knows whether to run profile-setup
+      const { user, isNew } = await findOrCreateGoogleUser(profile, 'student');
+      // Attach isNew so the callback route knows whether to trigger profile-setup
       user._isNewGoogleStudent = isNew;
       return done(null, user);
     } catch (err) {

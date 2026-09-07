@@ -3,55 +3,95 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const passport = require('../config/passport');
 const User     = require('../models/User');
-const authMiddleware    = require('../middleware/auth');
-const studentAuth       = require('../middleware/studentAuth');
 
 const router = express.Router();
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 const JWT_SECRET = process.env.JWT_SECRET  || 'secret';
 
-// ── Token factory ─────────────────────────────────────────────────────────────
-function makeToken(user) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Token factories
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * makeToken(user, activeRole)
+ *
+ * Issues a JWT that:
+ *  - identifies the user (id, email)
+ *  - encodes the specific role being used in this token (activeRole)
+ *  - encodes the full roles[] array so middleware can do roles.includes(x)
+ *
+ * Backward-compat: `role` string field is also included so old middleware
+ * and old tokens continue to work without changes.
+ */
+function makeToken(user, activeRole) {
+  const effectiveRoles = User.normalizeRoles(user);
   return jwt.sign(
-    { id: user._id, email: user.email, role: user.role },
+    {
+      id:     user._id,
+      email:  user.email,
+      role:   activeRole,          // legacy single-role claim
+      roles:  effectiveRoles,      // new multi-role claim
+    },
     JWT_SECRET,
     { expiresIn: '8h' }
   );
 }
 
 /**
- * makeSetupToken — a short-lived token used ONLY during the student profile-
- * completion step. It carries the user id so the setup endpoint can securely
- * update the correct User document without requiring a password.
- * It is NOT a full authentication token (role is 'student-setup', not 'student').
+ * makeSetupToken — short-lived token used ONLY during student profile-
+ * completion. Role is 'student-setup' so it cannot access protected routes.
  */
 function makeSetupToken(userId) {
   return jwt.sign(
-    { id: userId, role: 'student-setup' },
+    { id: userId, role: 'student-setup', roles: ['student-setup'] },
     JWT_SECRET,
     { expiresIn: '15m' }
   );
 }
 
-// ── Helper: is student profile complete? ─────────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────────
 function isStudentProfileComplete(user) {
   return !!(user.displayName && user.displayName.trim() &&
             user.rollNumber  && user.rollNumber.trim());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEACHER AUTH
+// TEACHER REGISTRATION
+// POST /api/auth/register
+//
+// Multi-role: if the email already exists, add "teacher" role rather than
+// returning a duplicate-email error.  If the email is new, create the user.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// POST /api/auth/register  (teacher)
 router.post('/register', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      // Account already exists — add teacher role if missing
+      const effective = existing.getRoles();
+      if (effective.includes('teacher')) {
+        // Already a teacher — treat as duplicate registration, guide to login
+        return res.status(409).json({ error: 'Email already registered as a teacher. Please sign in.' });
+      }
+      // Add teacher role to existing account (e.g. student adding teacher role)
+      await existing.ensureRole('teacher');
+      return res.status(200).json({
+        id: existing._id, email: existing.email,
+        roles: existing.getRoles(),
+        message: 'Teacher role added to your existing account.',
+      });
+    }
+
+    // New user
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ email: email.toLowerCase(), passwordHash, role: 'teacher' });
-    res.status(201).json({ id: user._id, email: user.email, role: user.role });
+    const user = await User.create({
+      email: email.toLowerCase(), passwordHash,
+      roles: ['teacher'], role: 'teacher',
+    });
+    res.status(201).json({ id: user._id, email: user.email, roles: user.roles });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: 'Email already registered' });
     res.status(500).json({ error: 'Server error' });
@@ -59,23 +99,46 @@ router.post('/register', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STUDENT AUTH
-// ─────────────────────────────────────────────────────────────────────────────
-
+// STUDENT REGISTRATION
 // POST /api/auth/student/register
+//
+// Multi-role: if the email already exists, add "student" role rather than
+// returning a duplicate-email error.
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/student/register', async (req, res) => {
   try {
     const { email, password, displayName, rollNumber, section, course } = req.body;
     if (!email || !password || !displayName) {
       return res.status(400).json({ error: 'email, password and name required' });
     }
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      const effective = existing.getRoles();
+      if (effective.includes('student')) {
+        return res.status(409).json({ error: 'Email already registered as a student. Please sign in.' });
+      }
+      // Add student role + profile fields to existing teacher account
+      existing.displayName = existing.displayName || displayName;
+      existing.rollNumber  = rollNumber || existing.rollNumber || '';
+      existing.section     = section    || existing.section    || '';
+      existing.course      = course     || existing.course     || '';
+      await existing.ensureRole('student');   // saves the document
+      return res.status(200).json({
+        id: existing._id, email: existing.email,
+        roles: existing.getRoles(),
+        message: 'Student role added to your existing account.',
+      });
+    }
+
+    // New user
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
       email: email.toLowerCase(), passwordHash, displayName,
       rollNumber: rollNumber || '', section: section || '', course: course || '',
-      role: 'student',
+      roles: ['student'], role: 'student',
     });
-    res.status(201).json({ id: user._id, email: user.email, role: user.role });
+    res.status(201).json({ id: user._id, email: user.email, roles: user.roles });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: 'Email already registered' });
     res.status(500).json({ error: 'Server error' });
@@ -83,44 +146,66 @@ router.post('/student/register', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UNIFIED LOGIN  (teacher or student — role determined by DB record)
-// ─────────────────────────────────────────────────────────────────────────────
-
+// UNIFIED LOGIN
 // POST /api/auth/login
+//
+// The `role` body param tells the backend which portal the user is logging in
+// through.  The backend verifies the user actually HAS that role before
+// issuing the corresponding token.
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role: requestedRole } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user || !user.passwordHash || user.passwordHash === 'google-oauth') {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-    res.json({ token: makeToken(user), role: user.role });
+
+    const effective = user.getRoles();
+
+    // Determine which role to issue token for
+    // If the frontend sent a role, respect it (and verify); otherwise fall back
+    // to backward-compat behaviour (first role in the array).
+    const activeRole = requestedRole || effective[0];
+
+    if (!effective.includes(activeRole)) {
+      return res.status(403).json({
+        error: `This account does not have the ${activeRole} role.`,
+        roles: effective,
+      });
+    }
+
+    res.json({ token: makeToken(user, activeRole), role: activeRole, roles: effective });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PROFILE ENDPOINTS
+// /api/auth/me  — works for any valid token (teacher or student)
 // ─────────────────────────────────────────────────────────────────────────────
-
-// GET /api/auth/me  — works for both teachers (authMiddleware) and students (studentAuth)
-// We use a combined approach: try teacher first, then student.
 router.get('/me', async (req, res) => {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET);
-    const user = await User.findById(payload.id).select('-passwordHash -googleId');
+    const user    = await User.findById(payload.id).select('-passwordHash -googleId');
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const effectiveRoles = user.getRoles();
     res.json({
       _id:         user._id,
       email:       user.email,
       displayName: user.displayName || user.email.split('@')[0],
-      role:        user.role,
+      // New field: full roles array
+      roles:       effectiveRoles,
+      // Legacy field: the role used in the current token (for compat)
+      role:        payload.role || effectiveRoles[0] || null,
       photoUrl:    user.photoUrl || null,
       rollNumber:  user.rollNumber,
       section:     user.section,
@@ -132,19 +217,9 @@ router.get('/me', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STUDENT PROFILE SETUP  (called after Google OAuth for incomplete profiles)
+// STUDENT PROFILE SETUP (Google OAuth onboarding)
+// POST /api/auth/student/complete-profile
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * POST /api/auth/student/complete-profile
- *
- * Body: { setupToken, displayName, rollNumber, section, course }
- *
- * The `setupToken` is the short-lived token issued by the Google student callback
- * when the account profile is incomplete. It identifies the user without granting
- * full student access. After validation the user record is updated and a full
- * studentToken is returned.
- */
 router.post('/student/complete-profile', async (req, res) => {
   try {
     const { setupToken, displayName, rollNumber, section, course } = req.body;
@@ -164,8 +239,13 @@ router.post('/student/complete-profile', async (req, res) => {
     }
 
     const user = await User.findById(payload.id);
-    if (!user || user.role !== 'student') {
-      return res.status(404).json({ error: 'Student account not found' });
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+
+    // Ensure student role (may have been teacher-only previously)
+    const effective = user.getRoles();
+    if (!effective.includes('student')) {
+      user.roles = [...new Set([...effective, 'student'])];
+      user.role  = user.roles[0];
     }
 
     user.displayName = displayName.trim();
@@ -174,8 +254,7 @@ router.post('/student/complete-profile', async (req, res) => {
     user.course      = (course     || '').trim();
     await user.save();
 
-    // Issue full student token now that profile is complete
-    res.json({ token: makeToken(user), role: 'student' });
+    res.json({ token: makeToken(user, 'student'), role: 'student', roles: user.getRoles() });
   } catch (err) {
     console.error('complete-profile error', err);
     res.status(500).json({ error: 'Server error' });
@@ -183,61 +262,48 @@ router.post('/student/complete-profile', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEACHER GOOGLE OAUTH  (existing — unchanged)
+// TEACHER GOOGLE OAUTH
 // ─────────────────────────────────────────────────────────────────────────────
-
-// GET /api/auth/google
 router.get('/google',
   passport.authenticate('google-teacher', { scope: ['profile', 'email'], session: false })
 );
 
-// GET /api/auth/google/callback
 router.get('/google/callback',
   passport.authenticate('google-teacher', {
     session: false,
     failureRedirect: `${CLIENT_URL}/login?error=google_failed`,
   }),
   (req, res) => {
-    if (!req.user) {
-      return res.redirect(`${CLIENT_URL}/login?error=account_is_student`);
-    }
-    const token = makeToken(req.user);
+    if (!req.user) return res.redirect(`${CLIENT_URL}/login?error=google_failed`);
+    const token = makeToken(req.user, 'teacher');
     res.redirect(`${CLIENT_URL}/auth/callback?token=${token}&role=teacher`);
   }
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STUDENT GOOGLE OAUTH  (new)
+// STUDENT GOOGLE OAUTH
 // ─────────────────────────────────────────────────────────────────────────────
-
-// GET /api/auth/google/student
 router.get('/google/student',
   passport.authenticate('google-student', { scope: ['profile', 'email'], session: false })
 );
 
-// GET /api/auth/google/student/callback
 router.get('/google/student/callback',
   passport.authenticate('google-student', {
     session: false,
     failureRedirect: `${CLIENT_URL}/student/login?error=google_failed`,
   }),
   (req, res) => {
-    if (!req.user) {
-      // Conflict: email belongs to a teacher account
-      return res.redirect(`${CLIENT_URL}/student/login?error=account_is_teacher`);
-    }
+    if (!req.user) return res.redirect(`${CLIENT_URL}/student/login?error=google_failed`);
 
     const user = req.user;
 
-    // Case 1: Profile is complete — issue full studentToken and go to dashboard
+    // Profile complete → full student token → dashboard
     if (isStudentProfileComplete(user)) {
-      const token = makeToken(user);
+      const token = makeToken(user, 'student');
       return res.redirect(`${CLIENT_URL}/auth/callback?token=${token}&role=student`);
     }
 
-    // Case 2: Profile incomplete — issue setup token and send to profile-setup page
-    // The setup token carries enough identity to complete the profile; it is NOT
-    // a full auth token and cannot access student-protected API routes.
+    // Profile incomplete → setup token → profile-setup page
     const setupToken = makeSetupToken(user._id);
     const params = new URLSearchParams({
       setupToken,
