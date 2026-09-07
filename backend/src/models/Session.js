@@ -12,10 +12,17 @@ const participantSchema = new mongoose.Schema({
 const sessionSchema = new mongoose.Schema({
   quizId: { type: mongoose.Schema.Types.ObjectId, ref: 'Quiz', required: true },
   roomCode: { type: String, required: true, unique: true },
-  state: { type: String, enum: ['waiting', 'active', 'completed'], default: 'waiting' },
+  state: {
+    type: String,
+    // 'waiting'   — room created, quiz not yet started
+    // 'active'    — start_quiz fired, quiz is live
+    // 'completed' — submit_quiz fired, results calculated
+    // 'cancelled' — teacher left before starting; session is void
+    enum: ['waiting', 'active', 'completed', 'cancelled'],
+    default: 'waiting',
+  },
   currentQuestionIndex: { type: Number, default: 0 },
   participants: { type: [participantSchema], default: [] },
-  
   startedAt: { type: Date, default: null },
 }, { timestamps: true });
 

@@ -9,19 +9,22 @@ export default function TeacherRoomPage() {
   const navigate     = useNavigate();
   const socketRef    = useRef(null);
   const timerRef     = useRef(null);
+  const sessionIdRef = useRef(null);   // stored once we know the session _id
   const token        = localStorage.getItem('teacherToken');
   const joinUrl      = `${window.location.origin}/join/${roomCode}`;
 
-  const [state,        setState]        = useState('waiting');
-  const [participants, setParticipants] = useState([]);
-  const [question,     setQuestion]     = useState(null);
-  const [showSubmit,   setShowSubmit]   = useState(false);
-  const [results,      setResults]      = useState(null);
-  const [error,        setError]        = useState('');
-  const [elapsed,      setElapsed]      = useState(0);
-  const [toast,        setToast]        = useState('');
-  const [activityLog,  setActivityLog]  = useState([]);
-  const [sidebarOpen,  setSidebarOpen]  = useState(false); // mobile sidebar toggle
+  const [state,          setState]          = useState('waiting');
+  const [participants,   setParticipants]   = useState([]);
+  const [question,       setQuestion]       = useState(null);
+  const [showSubmit,     setShowSubmit]     = useState(false);
+  const [results,        setResults]        = useState(null);
+  const [error,          setError]          = useState('');
+  const [elapsed,        setElapsed]        = useState(0);
+  const [toast,          setToast]          = useState('');
+  const [activityLog,    setActivityLog]    = useState([]);
+  const [sidebarOpen,    setSidebarOpen]    = useState(false);
+  const [showCancelDlg,  setShowCancelDlg]  = useState(false); // cancel confirmation
+  const [cancelling,     setCancelling]     = useState(false);
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 2500); }
   function copyLink() { navigator.clipboard.writeText(joinUrl); showToast('✅ Link copied!'); }
@@ -31,7 +34,12 @@ export default function TeacherRoomPage() {
     const socket = io(API_URL, { auth: { token } });
     socketRef.current = socket;
     socket.emit('join_room', { roomCode, token });
-    socket.on('session_state', (d) => { setState(d.state); setParticipants(d.participants || []); });
+    socket.on('session_state', (d) => {
+      setState(d.state);
+      setParticipants(d.participants || []);
+      // Capture session _id for cancel calls
+      if (d.sessionId) sessionIdRef.current = d.sessionId;
+    });
     socket.on('student_joined', ({ displayName }) => {
       setParticipants(prev => prev.find(p => p.displayName === displayName) ? prev : [...prev, { displayName }]);
     });
@@ -47,6 +55,15 @@ export default function TeacherRoomPage() {
     return () => { socket.disconnect(); clearInterval(timerRef.current); };
   }, [roomCode, token]);
 
+  // Also resolve session _id from the REST API in case session_state doesn't fire
+  useEffect(() => {
+    if (sessionIdRef.current) return;
+    fetch(`${API_URL}/api/sessions/${roomCode}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (d._id) sessionIdRef.current = d._id; })
+      .catch(() => {});
+  }, [roomCode, token]);
+
   useEffect(() => {
     if (state === 'active') timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(timerRef.current);
@@ -55,6 +72,31 @@ export default function TeacherRoomPage() {
   const startQuiz    = () => { setElapsed(0); socketRef.current.emit('start_quiz',    { roomCode }); };
   const nextQuestion = () => socketRef.current.emit('next_question', { roomCode });
   const submitQuiz   = () => socketRef.current.emit('submit_quiz',   { roomCode });
+
+  // ── Cancel / Leave waiting room ────────────────────────────────────────────
+  async function confirmCancel() {
+    setCancelling(true);
+    try {
+      if (sessionIdRef.current) {
+        await fetch(`${API_URL}/api/sessions/${sessionIdRef.current}/cancel`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        // Errors here are non-fatal — the session may already be cancelled/gone
+      }
+      // Disconnect socket cleanly before navigating
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      navigate('/dashboard');
+    } catch {
+      navigate('/dashboard');
+    } finally {
+      setCancelling(false);
+      setShowCancelDlg(false);
+    }
+  }
 
   /* ── RESULTS ── */
   if (state === 'completed' && results) {
@@ -139,7 +181,40 @@ export default function TeacherRoomPage() {
     return (
       <div style={S.page}>
         {toast && <div style={S.toast}>{toast}</div>}
+
+        {/* ── Cancel confirmation dialog ── */}
+        {showCancelDlg && (
+          <div style={S.dialogOverlay} role="dialog" aria-modal="true">
+            <div style={S.dialogBox}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>⚠️</div>
+              <div style={S.dialogTitle}>Leave this session?</div>
+              <p style={S.dialogSub}>
+                {participants.length > 0
+                  ? `${participants.length} student${participants.length !== 1 ? 's have' : ' has'} already joined. If you leave, the session will be cancelled and they will be disconnected.`
+                  : 'The quiz has not started yet. Leaving will cancel this session.'
+                }
+              </p>
+              <div style={S.dialogBtns}>
+                <button style={S.dialogStay} onClick={() => setShowCancelDlg(false)} disabled={cancelling}>
+                  Stay
+                </button>
+                <button style={S.dialogLeave} onClick={confirmCancel} disabled={cancelling}>
+                  {cancelling ? 'Leaving…' : 'Leave & Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div style={S.topbar}>
+          {/* Cancel/Back button — only visible in waiting state */}
+          <button
+            onClick={() => setShowCancelDlg(true)}
+            style={S.cancelWaitBtn}
+            aria-label="Cancel and go back to dashboard"
+          >
+            ← Back
+          </button>
           <span style={S.tbTitle}>📋 Waiting for Students</span>
           <span style={S.tbRight}>👥 {participants.length} joined</span>
         </div>
@@ -156,6 +231,9 @@ export default function TeacherRoomPage() {
             <button onClick={startQuiz} disabled={participants.length === 0}
               style={{ ...S.actionBtn, opacity: participants.length === 0 ? 0.5 : 1 }}>
               🚀 Start Quiz
+            </button>
+            <button onClick={() => setShowCancelDlg(true)} style={S.cancelBtn}>
+              ✕ Cancel Session
             </button>
           </div>
 
@@ -296,6 +374,16 @@ const S = {
   copyBtn:   { background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, flexShrink: 0, fontSize: 13 },
   codeBadge: { background: '#0f172a', color: '#94a3b8', borderRadius: 8, padding: '9px 14px', fontSize: 13 },
   actionBtn: { background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 12, padding: 'clamp(13px,3vw,16px) clamp(20px,5vw,32px)', fontWeight: 700, fontSize: 'clamp(14px,3.5vw,16px)', cursor: 'pointer', marginTop: 4, width: '100%' },
+  cancelBtn: { background: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: 10, padding: '10px', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: '100%', marginTop: 0 },
+  cancelWaitBtn: { background: 'rgba(255,255,255,0.08)', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, padding: '6px 14px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
+  // Cancel dialog
+  dialogOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 16 },
+  dialogBox:     { background: '#1e293b', borderRadius: 16, padding: 'clamp(24px,5vw,36px)', width: '100%', maxWidth: 380, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', textAlign: 'center', border: '1px solid #334155' },
+  dialogTitle:   { fontWeight: 800, fontSize: 18, color: '#f1f5f9', marginBottom: 10 },
+  dialogSub:     { color: '#94a3b8', fontSize: 13, marginBottom: 24, lineHeight: 1.5 },
+  dialogBtns:    { display: 'flex', gap: 10 },
+  dialogStay:    { flex: 1, padding: '12px 0', background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 14, cursor: 'pointer' },
+  dialogLeave:   { flex: 1, padding: '12px 0', background: 'linear-gradient(135deg,#dc2626,#b91c1c)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer' },
   waitSidebar: { width: 'clamp(220px,28vw,280px)', minWidth: 0, background: '#1e293b', borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0 },
 
   /* Active */

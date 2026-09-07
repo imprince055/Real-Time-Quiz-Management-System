@@ -44,9 +44,10 @@ export default function DashboardPage() {
             { headers: { Authorization: `Bearer ${token}` } }
           );
           const d = await r.json();
-          return [q._id, d.status || 'none'];
+          // Store both status and roomCode so Live button can navigate correctly
+          return [q._id, { status: d.status || 'none', roomCode: d.roomCode || null }];
         } catch {
-          return [q._id, 'none'];
+          return [q._id, { status: 'none', roomCode: null }];
         }
       })
     );
@@ -65,16 +66,21 @@ export default function DashboardPage() {
     const data = await res.json();
 
     if (!res.ok) {
-      // Distinguish completed vs actually-active conflict
+      // quiz_already_completed → friendly message, NO logout, NO redirect
       if (data.error === 'quiz_already_completed') {
-        showToast('Quiz is already completed.', true);
-        // Refresh this quiz's status so the UI updates immediately
-        setQuizStatuses(prev => ({ ...prev, [quizId]: 'completed' }));
+        showToast('This quiz has already been completed.', true);
+        setQuizStatuses(prev => ({
+          ...prev,
+          [quizId]: { ...(prev[quizId] || {}), status: 'completed' },
+        }));
       } else {
+        // Generic session error — show message, do NOT touch teacherToken
         showToast(data.message || data.error || 'Could not start quiz', true);
       }
       return;
     }
+
+    // Navigate to the teacher room (works for both new and rejoined sessions)
     navigate(`/room/${data.session.roomCode}`);
   }
 
@@ -101,9 +107,13 @@ export default function DashboardPage() {
 
   // ── Quiz action buttons ────────────────────────────────────────────────────
   function QuizActions({ quiz }) {
-    const status = quizStatuses[quiz._id] ?? 'loading';
+    const info   = quizStatuses[quiz._id];
+    const status = info?.status ?? (info === undefined ? 'loading' : 'none');
+    // For backward compat: info may still be a plain string from an old load
+    const effectiveStatus = typeof info === 'string' ? info : status;
+    const roomCode = typeof info === 'object' ? info?.roomCode : null;
 
-    if (status === 'loading') {
+    if (effectiveStatus === 'loading') {
       return (
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
           <div style={S.skeletonBtn} />
@@ -112,41 +122,56 @@ export default function DashboardPage() {
       );
     }
 
-    return (
-      <div className="btn-group" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        {/* Results button — always visible once there's something to show */}
-        {status === 'completed' && (
-          <button onClick={() => viewResults(quiz._id)} style={S.resultsBtn}>
+    // Completed: show Results + Completed badge (NO Start button, NO logout)
+    if (effectiveStatus === 'completed') {
+      return (
+        <div className="btn-group" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => viewResults(quiz._id)}
+            style={S.resultsBtn}
+          >
             📊 Results
           </button>
-        )}
-
-        {/* Status-dependent action button */}
-        {status === 'none' && (
-          <button onClick={() => startSession(quiz._id)} style={S.startBtn}>
-            ▶ Start
-          </button>
-        )}
-
-        {status === 'waiting' || status === 'active' ? (
-          <button onClick={() => navigate(`/room/${quizStatuses[quiz._id + '_roomCode'] || ''}`)}
-            style={S.activeBtn} title="Session is live">
-            🔴 Live
-          </button>
-        ) : null}
-
-        {status === 'completed' && (
-          <div style={S.completedBadge} title="This quiz has been completed">
+          <div
+            style={S.completedBadge}
+            title="This quiz has been completed"
+            onClick={() => showToast('This quiz has already been completed.', true)}
+          >
             ✓ Completed
           </div>
-        )}
+        </div>
+      );
+    }
 
-        {/* Show Results button for non-completed states too */}
-        {status !== 'completed' && (
+    // Active (truly live) — quiz has started, teacher can rejoin
+    if (effectiveStatus === 'active') {
+      return (
+        <div className="btn-group" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
           <button onClick={() => viewResults(quiz._id)} style={S.resultsBtn}>
             📊 Results
           </button>
-        )}
+          <button
+            onClick={() => roomCode ? navigate(`/room/${roomCode}`) : startSession(quiz._id)}
+            style={S.activeBtn}
+            title="Quiz is live — click to rejoin"
+          >
+            🔴 Live
+          </button>
+        </div>
+      );
+    }
+
+    // Waiting (room open, quiz NOT started) OR none — both show Start button.
+    // For 'waiting', clicking Start re-enters the same waiting room via POST /api/sessions
+    // which returns the existing waiting session (rejoined: true).
+    return (
+      <div className="btn-group" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <button onClick={() => viewResults(quiz._id)} style={S.resultsBtn}>
+          📊 Results
+        </button>
+        <button onClick={() => startSession(quiz._id)} style={S.startBtn}>
+          ▶ Start
+        </button>
       </div>
     );
   }
@@ -215,7 +240,7 @@ export default function DashboardPage() {
             {[
               { num: quizzes.length,  label: 'Quizzes' },
               { num: totalQuestions,  label: 'Questions' },
-              { num: Object.values(quizStatuses).filter(s => s === 'completed').length, label: 'Completed' },
+              { num: Object.values(quizStatuses).filter(s => (s?.status ?? s) === 'completed').length, label: 'Completed' },
             ].map(s => (
               <div key={s.label} style={S.statCard}>
                 <span style={S.statNum}>{s.num}</span>
@@ -250,7 +275,7 @@ export default function DashboardPage() {
         <div style={S.grid}>
           {quizzes.map((q, i) => (
             <div key={q._id} className="quiz-card"
-              style={{ opacity: quizStatuses[q._id] === 'completed' ? 0.88 : 1 }}>
+              style={{ opacity: (quizStatuses[q._id]?.status ?? quizStatuses[q._id]) === 'completed' ? 0.88 : 1 }}>
               <div style={{ ...S.quizIconBox, background: PALETTES[i % PALETTES.length].bg, flexShrink: 0 }}>
                 <span style={{ fontSize: 24 }}>{PALETTES[i % PALETTES.length].icon}</span>
               </div>
@@ -258,10 +283,10 @@ export default function DashboardPage() {
                 <div style={S.quizTitle}>{q.title}</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={S.metaBadge}>❓ {q.questions?.length || 0} questions</span>
-                  {quizStatuses[q._id] === 'completed' && (
+                  {(quizStatuses[q._id]?.status ?? quizStatuses[q._id]) === 'completed' && (
                     <span style={S.completedMetaBadge}>✓ completed</span>
                   )}
-                  {(quizStatuses[q._id] === 'waiting' || quizStatuses[q._id] === 'active') && (
+                  {(quizStatuses[q._id]?.status ?? quizStatuses[q._id]) === 'active' && (
                     <span style={S.liveBadge}>🔴 live</span>
                   )}
                 </div>

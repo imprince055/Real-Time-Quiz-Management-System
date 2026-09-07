@@ -85,8 +85,9 @@ module.exports = function registerHandlers(io) {
         if (session.state === 'completed') {
           return socket.emit('error', { message: 'Session already ended', code: 'SESSION_COMPLETED' });
         }
-
-        // Resolve studentId from the studentToken if provided.
+        if (session.state === 'cancelled') {
+          return socket.emit('error', { message: 'This session was cancelled', code: 'SESSION_CANCELLED' });
+        }
         // The token is verified server-side — the client cannot forge an id.
         let studentId = null;
         if (studentToken) {
