@@ -191,7 +191,6 @@ export default function DashboardPage() {
           <span style={S.brandName}>Quiz<b style={{ color: '#6366f1' }}>Portal</b></span>
         </div>
         <div style={S.navRight}>
-          <button onClick={() => navigate('/')} style={S.ghostBtn}>Home</button>
           <button style={S.createBtn} onClick={() => navigate('/quiz/create')}>＋ New Quiz</button>
           <div style={{ position: 'relative' }}>
             <div style={S.avatarBtn} onClick={() => setShowProfile(p => !p)}>
