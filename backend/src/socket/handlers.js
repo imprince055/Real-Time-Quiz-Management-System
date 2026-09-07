@@ -75,6 +75,23 @@ module.exports = function registerHandlers(io) {
             currentQuestionIndex: session.currentQuestionIndex,
             participants: session.participants,
           });
+
+          // ── Re-entry sync: if the quiz is already ACTIVE, send the teacher
+          //    the current question immediately so their UI catches up.
+          //    We emit only to this socket (not broadcast) so students are
+          //    completely unaffected. startedAt and currentQuestionIndex are
+          //    NOT modified — the session state is read-only here.
+          if (session.state === 'active') {
+            const q     = session.quizId.questions[session.currentQuestionIndex];
+            const total = session.quizId.questions.length;
+            socket.emit('question_display', safeQuestion(q, session.currentQuestionIndex, total));
+
+            // Also tell the teacher whether the Submit button should be visible
+            if (session.currentQuestionIndex === total - 1) {
+              socket.emit('show_submit');
+            }
+          }
+
           return;
         }
 
