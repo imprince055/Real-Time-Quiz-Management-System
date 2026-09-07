@@ -4,17 +4,17 @@ import { useNavigate, Link } from 'react-router-dom';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      const res  = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -30,64 +30,49 @@ export default function LoginPage() {
 
   return (
     <div style={S.page}>
-      {/* Decorative floating elements */}
-      <div style={{ ...S.floater, top: '8%', left: '6%', fontSize: 64, transform: 'rotate(-15deg)', color: '#f97316' }}>?</div>
-      <div style={{ ...S.floater, top: '15%', right: '8%', fontSize: 80, transform: 'rotate(10deg)', color: '#ec4899' }}>?</div>
-      <div style={{ ...S.floater, top: '40%', left: '3%', fontSize: 56, transform: 'rotate(5deg)', color: '#a855f7' }}>?</div>
-      <div style={{ ...S.floater, bottom: '20%', left: '10%', fontSize: 72, transform: 'rotate(-8deg)', color: '#22c55e' }}>✓</div>
-      <div style={{ ...S.floater, bottom: '10%', right: '5%', fontSize: 60, transform: 'rotate(12deg)', color: '#f97316' }}>?</div>
-      <div style={{ ...S.floater, top: '55%', right: '4%', fontSize: 50, transform: 'rotate(-20deg)', color: '#22c55e' }}>✓</div>
-      <div style={{ ...S.floater, bottom: '35%', right: '12%', fontSize: 44, transform: 'rotate(8deg)', color: '#ec4899' }}>?</div>
+      {/* Decorative floaters — hidden on very small screens via inline clamp */}
+      <div style={{ ...S.floater, top: '8%',  left: '6%',   fontSize: 'clamp(28px,8vw,64px)',  transform: 'rotate(-15deg)', color: '#f97316' }}>?</div>
+      <div style={{ ...S.floater, top: '15%', right: '8%',  fontSize: 'clamp(32px,10vw,80px)', transform: 'rotate(10deg)',  color: '#ec4899' }}>?</div>
+      <div style={{ ...S.floater, top: '40%', left: '3%',   fontSize: 'clamp(24px,7vw,56px)',  transform: 'rotate(5deg)',   color: '#a855f7', display: 'var(--floater-sm,block)' }}>?</div>
+      <div style={{ ...S.floater, bottom: '20%', left: '10%', fontSize: 'clamp(28px,8vw,72px)',transform: 'rotate(-8deg)', color: '#22c55e', display: 'var(--floater-sm,block)' }}>✓</div>
+      <div style={{ ...S.floater, bottom: '10%', right: '5%', fontSize: 'clamp(24px,7vw,60px)',transform: 'rotate(12deg)',  color: '#f97316' }}>?</div>
+      <div style={{ ...S.floater, top: '55%', right: '4%',   fontSize: 'clamp(20px,6vw,50px)', transform: 'rotate(-20deg)',color: '#22c55e', display: 'var(--floater-sm,block)' }}>✓</div>
 
-      {/* Card wrapper with avatar above */}
       <div style={S.wrapper}>
-        {/* Floating avatar above card */}
-        <div style={S.avatarWrap}>
-          <div style={S.avatar}>🧑‍🏫</div>
-        </div>
+        {/* Floating avatar */}
+        <div style={S.avatarWrap}><span style={S.avatar}>🧑‍🏫</span></div>
 
         <div style={S.card}>
-          <button onClick={() => navigate('/')}style={S.back}>← Back</button>
+          <button onClick={() => navigate('/')} style={S.back}>← Back</button>
           <h1 style={S.title}>Welcome Back, Teacher! 🎓</h1>
           <p style={S.sub}>Ready to create amazing quizzes?</p>
 
-          {error && <div style={S.errorBox}>{error}</div>}
+          {error && <div className="error-box">{error}</div>}
 
           <form onSubmit={handleSubmit}>
             <div style={S.inputWrap}>
-              <input
-                style={S.input}
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-              />
+              <input className="form-input" type="email" placeholder="Email"
+                value={email} onChange={e => setEmail(e.target.value)} required
+                style={S.glassinput} />
               <span style={S.inputIcon}>✏️</span>
             </div>
-
             <div style={S.inputWrap}>
-              <input
-                style={S.input}
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-              />
-              <span style={S.inputIcon}>??</span>
+              <input className="form-input" type="password" placeholder="Password"
+                value={password} onChange={e => setPassword(e.target.value)} required
+                style={S.glassinput} />
+              <span style={S.inputIcon}>🔒</span>
             </div>
 
-            <div style={S.divider}><span style={S.dividerText}>or</span></div>
+            <p style={S.orText}>— or —</p>
 
             <button style={{ ...S.btn, opacity: loading ? 0.7 : 1 }} type="submit" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 
           <a href={`${API_URL}/api/auth/google`} style={S.googleBtn}>
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="G" style={{ marginRight: 10 }} />
-            Google
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="G" />
+            Continue with Google
           </a>
 
           <p style={S.footNote}>
@@ -109,7 +94,7 @@ const S = {
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
-    padding: 20,
+    padding: 'clamp(12px,4vw,24px)',
     position: 'relative',
     overflow: 'hidden',
   },
@@ -129,131 +114,81 @@ const S = {
     position: 'relative',
     zIndex: 1,
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 520,
   },
   avatarWrap: {
     zIndex: 2,
-    marginBottom: -36,
+    marginBottom: -32,
     filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.3))',
   },
-  avatar: {
-    fontSize: 72,
-    lineHeight: 1,
-  },
+  avatar: { fontSize: 'clamp(48px,12vw,72px)', lineHeight: 1 },
   card: {
     background: 'rgba(255,255,255,0.15)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
     borderRadius: 24,
-    padding: '72px 56px 52px',
+    padding: 'clamp(52px,10vw,72px) clamp(20px,6vw,48px) clamp(28px,6vw,48px)',
     width: '100%',
-    minHeight: 520,
     border: '1px solid rgba(255,255,255,0.3)',
     boxShadow: '0 24px 64px rgba(0,0,0,0.3)',
   },
+  back: {
+    background: 'none', border: 'none',
+    color: 'rgba(255,255,255,0.8)',
+    cursor: 'pointer', fontSize: 13,
+    marginBottom: 12, padding: 0, display: 'block',
+  },
   title: {
-    fontSize: 32,
-    fontWeight: 800,
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
+    fontSize: 'clamp(20px,5vw,30px)',
+    fontWeight: 800, color: '#fff',
+    textAlign: 'center', marginBottom: 6,
     textShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   sub: {
-    color: 'rgba(255,255,255,0.8)',
-    textAlign: 'center',
-    marginBottom: 24,
-    fontSize: 18,
+    color: 'rgba(255,255,255,0.8)', textAlign: 'center',
+    marginBottom: 20, fontSize: 'clamp(13px,3.5vw,17px)',
   },
-  inputWrap: {
-    position: 'relative',
-    marginBottom: 14,
-  },
-  input: {
-    display: 'block',
-    width: '100%',
-    padding: '16px 52px 16px 18px',
-    border: '1px solid rgba(255,255,255,0.3)',
-    borderRadius: 12,
-    fontSize: 17,
-    outline: 'none',
-    color: '#1e293b',
+  inputWrap: { position: 'relative', marginBottom: 12 },
+  glassinput: {
     background: 'rgba(255,255,255,0.85)',
-    boxSizing: 'border-box',
+    border: '1px solid rgba(255,255,255,0.3)',
+    paddingRight: 44,
     backdropFilter: 'blur(8px)',
   },
   inputIcon: {
-    position: 'absolute',
-    right: 14,
-    top: '50%',
-    transform: 'translateY(-50%)',
-    fontSize: 16,
-    color: '#64748b',
-    pointerEvents: 'none',
+    position: 'absolute', right: 14, top: '50%',
+    transform: 'translateY(-50%)', fontSize: 15,
+    color: '#64748b', pointerEvents: 'none',
+  },
+  orText: {
+    textAlign: 'center', color: 'rgba(255,255,255,0.6)',
+    fontSize: 13, margin: '12px 0',
   },
   btn: {
     width: '100%',
-    padding: '14px',
+    padding: 'clamp(12px,3vw,15px)',
     background: 'linear-gradient(135deg, #667eea, #a855f7)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 12,
-    fontSize: 18,
-    fontWeight: 700,
-    cursor: 'pointer',
-    marginTop: 4,
-    marginBottom: 12,
-    boxShadow: '0 4px 20px rgba(102,126,234,0.5)',
+    color: '#fff', border: 'none', borderRadius: 12,
+    fontSize: 'clamp(15px,4vw,18px)', fontWeight: 700,
+    cursor: 'pointer', marginBottom: 10,
+    boxShadow: '0 4px 20px rgba(102,126,234,0.45)',
     transition: 'opacity 0.2s',
   },
-  errorBox: {
-    background: 'rgba(254,242,242,0.9)',
-    border: '1px solid #fecaca',
-    color: '#dc2626',
-    borderRadius: 8,
-    padding: '10px 14px',
-    fontSize: 13,
-    marginBottom: 16,
-  },
-  divider: {
-    display: 'flex',
-    alignItems: 'center',
-    margin: '16px 0',
-    gap: 12,
-  },
-  dividerText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    width: '100%',
-    textAlign: 'center',
-  },
   googleBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    padding: '13px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: 10, width: '100%',
+    padding: 'clamp(11px,3vw,14px)',
     border: '1px solid rgba(255,255,255,0.3)',
-    borderRadius: 12,
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#1e293b',
-    background: 'rgba(255,255,255,0.75)',
-    cursor: 'pointer',
-    textDecoration: 'none',
-    marginBottom: 4,
+    borderRadius: 12, fontSize: 'clamp(13px,3.5vw,15px)', fontWeight: 600,
+    color: '#1e293b', background: 'rgba(255,255,255,0.8)',
+    cursor: 'pointer', textDecoration: 'none',
     backdropFilter: 'blur(8px)',
     boxSizing: 'border-box',
   },
   footNote: {
-    textAlign: 'center',
-    marginTop: 18,
-    fontSize: 15,
+    textAlign: 'center', marginTop: 16,
+    fontSize: 'clamp(12px,3vw,15px)',
     color: 'rgba(255,255,255,0.8)',
   },
-  link: {
-    color: '#fff',
-    fontWeight: 700,
-    textDecoration: 'none',
-  },
+  link: { color: '#fff', fontWeight: 700, textDecoration: 'none' },
 };

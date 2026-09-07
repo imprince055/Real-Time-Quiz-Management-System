@@ -5,9 +5,9 @@ export default function JoinPage() {
   const { roomCode } = useParams();
   const [form, setForm] = useState({
     displayName: sessionStorage.getItem('displayName') || '',
-    rollNumber: sessionStorage.getItem('rollNumber') || '',
-    section: sessionStorage.getItem('section') || '',
-    course: sessionStorage.getItem('course') || '',
+    rollNumber:  sessionStorage.getItem('rollNumber')  || '',
+    section:     sessionStorage.getItem('section')     || '',
+    course:      sessionStorage.getItem('course')      || '',
   });
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -18,38 +18,54 @@ export default function JoinPage() {
     e.preventDefault();
     if (!form.displayName.trim()) return setError('Please enter your name');
     sessionStorage.setItem('displayName', form.displayName.trim());
-    sessionStorage.setItem('rollNumber', form.rollNumber.trim());
-    sessionStorage.setItem('section', form.section.trim());
-    sessionStorage.setItem('course', form.course.trim());
+    sessionStorage.setItem('rollNumber',  form.rollNumber.trim());
+    sessionStorage.setItem('section',     form.section.trim());
+    sessionStorage.setItem('course',      form.course.trim());
     navigate(`/student/${roomCode}`);
   }
 
   return (
-    <div style={S.page}>
-      <div style={S.card}>
-        <div style={S.icon}>🎯</div>
+    <div className="auth-page" style={{ background: 'linear-gradient(135deg,#667eea 0%,#764ba2 100%)' }}>
+      <div className="auth-card" style={{ maxWidth: 460 }}>
+        <div style={{ fontSize: 44, textAlign: 'center', marginBottom: 10 }}>🎯</div>
         <h1 style={S.title}>Join Quiz</h1>
-        <p style={S.sub}>Room <span style={S.code}>{roomCode}</span></p>
-        {error && <div style={S.errorBox}>{error}</div>}
+        <p style={S.sub}>
+          Room <span style={S.code}>{roomCode}</span>
+        </p>
+
+        {error && <div className="error-box">{error}</div>}
+
         <form onSubmit={handleJoin}>
-          <label style={S.label}>Full Name *</label>
-          <input style={S.input} placeholder="e.g. Prince Kumar" value={form.displayName} onChange={e => update('displayName', e.target.value)} required autoFocus />
+          <label className="form-label">Full Name *</label>
+          <input className="form-input" placeholder="e.g. Prince Kumar"
+            value={form.displayName} onChange={e => update('displayName', e.target.value)}
+            required autoFocus style={{ marginBottom: 12 }} />
 
-          <label style={S.label}>Roll Number</label>
-          <input style={S.input} placeholder="e.g. 2201234" value={form.rollNumber} onChange={e => update('rollNumber', e.target.value)} />
+          <label className="form-label">Roll Number</label>
+          <input className="form-input" placeholder="e.g. 2201234"
+            value={form.rollNumber} onChange={e => update('rollNumber', e.target.value)}
+            style={{ marginBottom: 12 }} />
 
-          <div style={S.row}>
+          {/* Section + Course stack on mobile */}
+          <div className="form-row">
             <div style={{ flex: 1 }}>
-              <label style={S.label}>Section</label>
-              <input style={S.input} placeholder="e.g. A" value={form.section} onChange={e => update('section', e.target.value)} />
+              <label className="form-label">Section</label>
+              <input className="form-input" placeholder="e.g. A"
+                value={form.section} onChange={e => update('section', e.target.value)}
+                style={{ marginBottom: 12 }} />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={S.label}>Course</label>
-              <input style={S.input} placeholder="e.g. BCA" value={form.course} onChange={e => update('course', e.target.value)} />
+              <label className="form-label">Course</label>
+              <input className="form-input" placeholder="e.g. BCA"
+                value={form.course} onChange={e => update('course', e.target.value)}
+                style={{ marginBottom: 12 }} />
             </div>
           </div>
 
-          <button type="submit" style={S.btn}>Join Quiz →</button>
+          <button className="btn-primary" type="submit"
+            style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', marginTop: 4 }}>
+            Join Quiz →
+          </button>
         </form>
       </div>
     </div>
@@ -57,15 +73,7 @@ export default function JoinPage() {
 }
 
 const S = {
-  page: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: 20 },
-  card: { background: '#fff', borderRadius: 20, padding: '40px 36px', width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' },
-  icon: { fontSize: 48, textAlign: 'center', marginBottom: 10 },
-  title: { fontSize: 24, fontWeight: 800, color: '#1e293b', textAlign: 'center', marginBottom: 6 },
-  sub: { color: '#94a3b8', textAlign: 'center', marginBottom: 24, fontSize: 14 },
-  code: { background: '#e0e7ff', color: '#4f46e5', padding: '2px 10px', borderRadius: 6, fontWeight: 700, fontFamily: 'monospace' },
-  label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5, marginTop: 2 },
-  input: { display: 'block', width: '100%', padding: '11px 13px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: 14, marginBottom: 12, outline: 'none', color: '#1e293b', background: '#f8fafc' },
-  row: { display: 'flex', gap: 12 },
-  btn: { width: '100%', padding: '13px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer', marginTop: 4 },
-  errorBox: { background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 },
+  title: { fontSize: 'clamp(20px,5vw,24px)', fontWeight: 800, color: '#1e293b', textAlign: 'center', marginBottom: 6 },
+  sub:   { color: '#94a3b8', textAlign: 'center', marginBottom: 20, fontSize: 'clamp(12px,3vw,14px)' },
+  code:  { background: '#e0e7ff', color: '#4f46e5', padding: '2px 9px', borderRadius: 6, fontWeight: 700, fontFamily: 'monospace' },
 };
