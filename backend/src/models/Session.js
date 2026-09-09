@@ -16,9 +16,10 @@ const sessionSchema = new mongoose.Schema({
     type: String,
     // 'waiting'   — room created, quiz not yet started
     // 'active'    — start_quiz fired, quiz is live
+    // 'finishing' — results are being calculated; prevents a second submit
     // 'completed' — submit_quiz fired, results calculated
     // 'cancelled' — teacher left before starting; session is void
-    enum: ['waiting', 'active', 'completed', 'cancelled'],
+    enum: ['waiting', 'active', 'finishing', 'completed', 'cancelled'],
     default: 'waiting',
   },
   currentQuestionIndex: { type: Number, default: 0 },

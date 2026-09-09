@@ -256,20 +256,33 @@ module.exports = function registerHandlers(io) {
 
   
     socket.on('submit_quiz', async ({ roomCode }) => {
+      let claimedSession = null;
       try {
         if (socket.data.role !== 'teacher' || socket.data.roomCode !== roomCode) {
           return socket.emit('error', { message: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
-        const session = await Session.findOne({ roomCode }).populate('quizId');
-        if (!session) return socket.emit('error', { message: 'Session not found', code: 'SESSION_NOT_FOUND' });
-        if (session.state !== 'active') {
+        // Claim the active session in one database operation. This prevents two
+        // fast clicks (or duplicate socket packets) from finalising it twice.
+        const session = await Session.findOneAndUpdate(
+          { roomCode, state: 'active' },
+          { $set: { state: 'finishing' } },
+          { new: true }
+        ).populate('quizId');
+
+        if (!session) {
+          const existing = await Session.findOne({ roomCode }).select('state');
+          if (!existing) return socket.emit('error', { message: 'Session not found', code: 'SESSION_NOT_FOUND' });
+
+          // The original submit is already calculating or has finished. Do not
+          // show a false error to the teacher for a repeated submit request.
+          if (existing.state === 'finishing' || existing.state === 'completed') return;
           return socket.emit('error', { message: 'Session not active', code: 'SESSION_WRONG_STATE' });
         }
-
-        session.state = 'completed';
-        await session.save();
+        claimedSession = session;
 
         const rankedLeaderboard = await calculateScores(session._id);
+        session.state = 'completed';
+        await session.save();
         const totalParticipants = rankedLeaderboard.length;
 
         const allSockets = await io.in(roomCode).fetchSockets();
@@ -303,6 +316,14 @@ module.exports = function registerHandlers(io) {
         delete teacherSockets[roomCode];
       } catch (err) {
         console.error('submit_quiz error', err);
+        // Scoring uses idempotent upserts, so returning to active permits a safe
+        // retry if an unexpected database error occurs during finalisation.
+        if (claimedSession) {
+          await Session.updateOne(
+            { _id: claimedSession._id, state: 'finishing' },
+            { $set: { state: 'active' } }
+          ).catch(() => {});
+        }
         socket.emit('error', { message: 'Server error', code: 'SERVER_ERROR' });
       }
     });

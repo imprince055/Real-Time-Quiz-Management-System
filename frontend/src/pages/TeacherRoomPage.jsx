@@ -17,6 +17,7 @@ export default function TeacherRoomPage() {
   const [participants,   setParticipants]   = useState([]);
   const [question,       setQuestion]       = useState(null);
   const [showSubmit,     setShowSubmit]     = useState(false);
+  const [isSubmitting,   setIsSubmitting]   = useState(false);
   const [results,        setResults]        = useState(null);
   const [error,          setError]          = useState('');
   const [elapsed,        setElapsed]        = useState(0);
@@ -45,8 +46,16 @@ export default function TeacherRoomPage() {
     });
     socket.on('question_display', (q) => { setQuestion(q); setState('active'); setShowSubmit(q.index === q.total - 1); });
     socket.on('show_submit', () => setShowSubmit(true));
-    socket.on('all_results', ({ results }) => { setResults(results); setState('completed'); clearInterval(timerRef.current); });
-    socket.on('error', ({ message }) => setError(message));
+    socket.on('all_results', ({ results }) => {
+      setResults(results);
+      setState('completed');
+      setIsSubmitting(false);
+      clearInterval(timerRef.current);
+    });
+    socket.on('error', ({ message }) => {
+      setError(message);
+      setIsSubmitting(false);
+    });
     socket.on('student_tab_switch', ({ displayName, switchCount, time }) => {
       const ordinal = switchCount === 1 ? '1st' : switchCount === 2 ? '2nd' : switchCount === 3 ? '3rd' : `${switchCount}th`;
       const color = switchCount === 1 ? '#f59e0b' : '#dc2626';
@@ -71,7 +80,13 @@ export default function TeacherRoomPage() {
 
   const startQuiz    = () => { setElapsed(0); socketRef.current.emit('start_quiz',    { roomCode }); };
   const nextQuestion = () => socketRef.current.emit('next_question', { roomCode });
-  const submitQuiz   = () => socketRef.current.emit('submit_quiz',   { roomCode });
+  const submitQuiz = () => {
+    // Ignore double-clicks while the server grades every student's answers.
+    if (isSubmitting) return;
+    setError('');
+    setIsSubmitting(true);
+    socketRef.current.emit('submit_quiz', { roomCode });
+  };
 
   // ── Cancel / Leave waiting room ────────────────────────────────────────────
   async function confirmCancel() {
@@ -332,7 +347,13 @@ export default function TeacherRoomPage() {
                 {!showSubmit ? (
                   <button onClick={nextQuestion} style={S.nextBtn}>NEXT QUESTION →</button>
                 ) : (
-                  <button onClick={submitQuiz} style={S.submitBtn}>✅ SUBMIT QUIZ FOR ALL STUDENTS</button>
+                  <button
+                    onClick={submitQuiz}
+                    disabled={isSubmitting}
+                    style={{ ...S.submitBtn, opacity: isSubmitting ? 0.7 : 1, cursor: isSubmitting ? 'wait' : 'pointer' }}
+                  >
+                    {isSubmitting ? '⏳ CALCULATING RESULTS...' : '✅ SUBMIT QUIZ FOR ALL STUDENTS'}
+                  </button>
                 )}
               </div>
             </>
