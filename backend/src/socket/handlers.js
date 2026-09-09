@@ -261,8 +261,11 @@ module.exports = function registerHandlers(io) {
         if (socket.data.role !== 'teacher' || socket.data.roomCode !== roomCode) {
           return socket.emit('error', { message: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
-        // Claim the active session in one database operation. This prevents two
-        // fast clicks (or duplicate socket packets) from finalising it twice.
+
+        // ── Atomically claim the session ─────────────────────────────────────
+        // Using findOneAndUpdate ensures only ONE concurrent submit_quiz call
+        // can transition the session from 'active' → 'finishing'.
+        // Any subsequent click gets the 'not active' path below and is ignored.
         const session = await Session.findOneAndUpdate(
           { roomCode, state: 'active' },
           { $set: { state: 'finishing' } },
@@ -270,21 +273,45 @@ module.exports = function registerHandlers(io) {
         ).populate('quizId');
 
         if (!session) {
+          // Session is in 'finishing' or 'completed' — a prior submit is in
+          // progress or has already finished. Silently ignore; the teacher will
+          // receive all_results from the first submit.
           const existing = await Session.findOne({ roomCode }).select('state');
-          if (!existing) return socket.emit('error', { message: 'Session not found', code: 'SESSION_NOT_FOUND' });
-
-          // The original submit is already calculating or has finished. Do not
-          // show a false error to the teacher for a repeated submit request.
-          if (existing.state === 'finishing' || existing.state === 'completed') return;
+          if (!existing) {
+            return socket.emit('error', { message: 'Session not found', code: 'SESSION_NOT_FOUND' });
+          }
+          if (existing.state === 'finishing' || existing.state === 'completed') {
+            console.log(`[submit_quiz] Duplicate submit ignored — room ${roomCode} already in state ${existing.state}`);
+            return;
+          }
           return socket.emit('error', { message: 'Session not active', code: 'SESSION_WRONG_STATE' });
         }
+
         claimedSession = session;
 
+        console.log(
+          `[submit_quiz] Starting finalization — room ${roomCode} | session ${session._id} | ` +
+          `quiz ${session.quizId?._id} | participants ${session.participants?.length ?? 0}`
+        );
+
+        // ── Calculate scores (idempotent upserts internally) ─────────────────
         const rankedLeaderboard = await calculateScores(session._id);
-        session.state = 'completed';
-        await session.save();
+
+        console.log(
+          `[submit_quiz] Scores calculated — ${rankedLeaderboard.length} ranked entries`
+        );
+
+        // ── Mark session completed atomically ────────────────────────────────
+        // Use findByIdAndUpdate instead of session.save() to avoid a version
+        // conflict if the document was touched between the claim and here.
+        await Session.findByIdAndUpdate(
+          session._id,
+          { $set: { state: 'completed' } }
+        );
+
         const totalParticipants = rankedLeaderboard.length;
 
+        // ── Deliver per-student results ───────────────────────────────────────
         const allSockets = await io.in(roomCode).fetchSockets();
         for (const s of allSockets) {
           if (s.data.role !== 'student') continue;
@@ -295,10 +322,10 @@ module.exports = function registerHandlers(io) {
 
           if (entry) {
             s.emit('quiz_results', {
-            
+              // backward-compat fields
               score: entry.correctAnswers,
               total: entry.totalQuestions,
-              
+              // rich fields
               quizTitle:        session.quizId.title,
               sessionId:        session._id.toString(),
               correctAnswers:   entry.correctAnswers,
@@ -312,19 +339,37 @@ module.exports = function registerHandlers(io) {
           }
         }
 
+        // ── Deliver final leaderboard to teacher ──────────────────────────────
         socket.emit('all_results', { results: rankedLeaderboard });
         delete teacherSockets[roomCode];
+
+        console.log(`[submit_quiz] Finalization complete — room ${roomCode}`);
+
       } catch (err) {
-        console.error('submit_quiz error', err);
-        // Scoring uses idempotent upserts, so returning to active permits a safe
-        // retry if an unexpected database error occurs during finalisation.
+        // Log the full stack so we can see the REAL cause, not just "Server error"
+        console.error(
+          `[submit_quiz] CRITICAL ERROR — room ${roomCode}:`,
+          err.message,
+          err.stack
+        );
+
+        // If we claimed the session but then failed, revert to 'active' so the
+        // teacher can retry.  Uses a conditional update to avoid overwriting
+        // 'completed' if a partial success somehow already set it.
         if (claimedSession) {
           await Session.updateOne(
             { _id: claimedSession._id, state: 'finishing' },
             { $set: { state: 'active' } }
-          ).catch(() => {});
+          ).catch((revertErr) => {
+            console.error('[submit_quiz] Failed to revert session state:', revertErr.message);
+          });
         }
-        socket.emit('error', { message: 'Server error', code: 'SERVER_ERROR' });
+
+        // Send the real error message to the teacher (not a generic "Server error")
+        socket.emit('error', {
+          message: `Submission failed: ${err.message}`,
+          code: 'SERVER_ERROR',
+        });
       }
     });
 

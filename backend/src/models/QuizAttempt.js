@@ -50,7 +50,10 @@ quizAttemptSchema.index(
   { sessionId: 1, studentId: 1 },
   {
     unique: true,
-    sparse: true,
+    // `sparse` still indexes explicit null values. Guest participants have
+    // studentId: null, so a sparse unique index incorrectly allows only one
+    // guest per session. Index only real ObjectId values instead.
+    partialFilterExpression: { studentId: { $type: 'objectId' } },
     name: 'unique_session_student',
   }
 );
