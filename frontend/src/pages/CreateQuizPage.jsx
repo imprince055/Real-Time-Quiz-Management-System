@@ -17,6 +17,7 @@ function isDraftEmpty(d) {
 
 export default function CreateQuizPage() {
   const [title,        setTitle]        = useState('');
+  const [durationMinutes, setDurationMinutes] = useState(5); // default 5 min
   const [questions,    setQuestions]    = useState([]);   // saved questions
   const [editorOpen,   setEditorOpen]   = useState(false);
   const [editingIndex, setEditingIndex] = useState(null); // null = new question
@@ -169,13 +170,18 @@ export default function CreateQuizPage() {
       setSubmitError('Please save or cancel the current question editor first.');
       return;
     }
+    const durNum = Number(durationMinutes);
+    if (!durationMinutes || !Number.isFinite(durNum) || durNum < 1 || durNum > 180) {
+      setSubmitError('Please set a quiz duration between 1 and 180 minutes.');
+      return;
+    }
 
     setLoading(true);
     try {
       const res  = await fetch(`${API_URL}/api/quizzes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title, questions }),
+        body: JSON.stringify({ title, questions, durationMinutes }),
       });
       const data = await res.json();
       if (!res.ok) return setSubmitError(data.error || 'Failed to create quiz');
@@ -238,6 +244,77 @@ export default function CreateQuizPage() {
               required
               style={{ fontSize: 'clamp(14px,3.5vw,16px)', fontWeight: 600 }}
             />
+          </div>
+
+          {/* ── Duration selector card ── */}
+          <div style={S.card}>
+            <label className="form-label" style={S.sectionLabel}>
+              ⏱ Quiz Time Limit
+            </label>
+            <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+              All students share this global timer. The quiz ends automatically when time runs out.
+              Enter any duration from 1 to 180 minutes.
+            </p>
+
+            {/* Numeric spinner */}
+            <div style={S.durationRow}>
+              <button
+                type="button"
+                onClick={() => setDurationMinutes(d => Math.max(1, d - 1))}
+                style={S.durationStepBtn}
+                aria-label="Decrease duration"
+              >−</button>
+
+              <div style={S.durationDisplay}>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  value={durationMinutes}
+                  onChange={e => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) setDurationMinutes(Math.min(180, Math.max(1, v)));
+                  }}
+                  style={S.durationInput}
+                  aria-label="Quiz duration in minutes"
+                />
+                <span style={S.durationLabel}>
+                  {durationMinutes === 1 ? 'minute' : 'minutes'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDurationMinutes(d => Math.min(180, d + 1))}
+                style={S.durationStepBtn}
+                aria-label="Increase duration"
+              >+</button>
+            </div>
+
+            {/* Quick-pick presets */}
+            <div style={S.presetRow}>
+              {[1, 5, 10, 15, 20, 30].map(min => (
+                <button
+                  key={min}
+                  type="button"
+                  onClick={() => setDurationMinutes(min)}
+                  style={{
+                    ...S.presetBtn,
+                    ...(durationMinutes === min ? S.presetBtnActive : {}),
+                  }}
+                >
+                  {min}m
+                </button>
+              ))}
+            </div>
+
+            {/* Live preview */}
+            <div style={S.durationPreview}>
+              ⏱ Timer will run for <strong>{durationMinutes} {durationMinutes === 1 ? 'minute' : 'minutes'}</strong> (
+              {Math.floor(durationMinutes / 60) > 0 ? `${Math.floor(durationMinutes / 60)}h ` : ''}
+              {durationMinutes % 60 > 0 ? `${durationMinutes % 60}m` : ''}
+              )
+            </div>
           </div>
 
           {/* ── Questions section ── */}
@@ -679,6 +756,51 @@ const S = {
     background: 'linear-gradient(135deg,#667eea,#764ba2)',
     color: '#fff', border: 'none', borderRadius: 12,
     fontSize: 'clamp(14px,3.5vw,16px)', fontWeight: 700,
+  },
+
+  // Duration selector
+  durationRow: {
+    display: 'flex', alignItems: 'center', gap: 14,
+    marginBottom: 14,
+  },
+  durationStepBtn: {
+    width: 40, height: 40, borderRadius: '50%',
+    border: '2px solid #c7d2fe', background: '#f0f4ff',
+    color: '#4f46e5', fontWeight: 900, fontSize: 22,
+    cursor: 'pointer', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', flexShrink: 0,
+    lineHeight: 1, transition: 'background 0.15s',
+  },
+  durationDisplay: {
+    display: 'flex', alignItems: 'baseline', gap: 8,
+    flex: 1,
+  },
+  durationInput: {
+    width: 80, fontSize: 'clamp(24px,6vw,34px)', fontWeight: 900,
+    color: '#4f46e5', textAlign: 'center',
+    border: '2px solid #6366f1', borderRadius: 12,
+    padding: '6px 0', background: '#f8faff',
+    outline: 'none',
+    // Remove number input arrows in most browsers
+    MozAppearance: 'textfield',
+  },
+  durationLabel: {
+    fontSize: 14, color: '#64748b', fontWeight: 600,
+  },
+  presetRow: {
+    display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12,
+  },
+  presetBtn: {
+    padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+    border: '1.5px solid #e0e7ff', background: '#f8faff', color: '#64748b',
+    cursor: 'pointer', transition: 'all 0.15s',
+  },
+  presetBtnActive: {
+    border: '1.5px solid #6366f1', background: '#ede9fe', color: '#4f46e5',
+  },
+  durationPreview: {
+    fontSize: 12, color: '#6366f1', fontWeight: 600,
+    background: '#f0f4ff', borderRadius: 8, padding: '7px 12px',
   },
 
   // Discard-changes dialog

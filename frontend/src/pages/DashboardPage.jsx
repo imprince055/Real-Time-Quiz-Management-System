@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -17,6 +18,9 @@ export default function DashboardPage() {
   const [showProfile,  setShowProfile]  = useState(false);
   // Map of quizId → 'none' | 'waiting' | 'active' | 'completed'
   const [quizStatuses, setQuizStatuses] = useState({});
+  const [terminateTarget, setTerminateTarget] = useState(null); // { quizId, roomCode }
+  const [terminating, setTerminating] = useState(false);
+  const socketRef = useRef(null);
   const navigate = useNavigate();
   const token = localStorage.getItem('teacherToken');
 
@@ -100,6 +104,40 @@ export default function DashboardPage() {
     setTimeout(() => setToast(''), 3500);
   }
 
+  // ── Terminate a stale live session ─────────────────────────────────────────
+  async function terminateSession() {
+    if (!terminateTarget) return;
+    setTerminating(true);
+    try {
+      const socket = io(API_URL, { auth: { token } });
+      socketRef.current = socket;
+      socket.emit('terminate_session', { roomCode: terminateTarget.roomCode });
+      socket.on('session_terminated', () => {
+        socket.disconnect();
+        setTerminating(false);
+        setTerminateTarget(null);
+        showToast('Session terminated successfully.');
+        // Refresh statuses
+        setQuizStatuses(prev => ({
+          ...prev,
+          [terminateTarget.quizId]: { status: 'completed', roomCode: terminateTarget.roomCode },
+        }));
+      });
+      socket.on('error', ({ message }) => {
+        socket.disconnect();
+        setTerminating(false);
+        showToast(message || 'Could not terminate session', true);
+      });
+      // Timeout fallback
+      setTimeout(() => {
+        if (terminating) { socket.disconnect(); setTerminating(false); }
+      }, 10000);
+    } catch (e) {
+      setTerminating(false);
+      showToast('Failed to terminate session', true);
+    }
+  }
+
   function logout() { localStorage.removeItem('teacherToken'); navigate('/login'); }
 
   const totalQuestions = quizzes.reduce((a, q) => a + (q.questions?.length || 0), 0);
@@ -143,10 +181,10 @@ export default function DashboardPage() {
       );
     }
 
-    // Active (truly live) — quiz has started, teacher can rejoin
+    // Active (truly live) — quiz has started, teacher can rejoin OR terminate
     if (effectiveStatus === 'active') {
       return (
-        <div className="btn-group" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <div className="btn-group" style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <button onClick={() => viewResults(quiz._id)} style={S.resultsBtn}>
             📊 Results
           </button>
@@ -156,6 +194,13 @@ export default function DashboardPage() {
             title="Quiz is live — click to rejoin"
           >
             🔴 Live
+          </button>
+          <button
+            onClick={() => setTerminateTarget({ quizId: quiz._id, roomCode })}
+            style={S.terminateBtn}
+            title="Terminate stale session"
+          >
+            ⏹ End
           </button>
         </div>
       );
@@ -181,6 +226,28 @@ export default function DashboardPage() {
       {toast && (
         <div style={{ ...S.toast, background: toast.isError ? '#ef4444' : '#10b981' }}>
           {toast.isError ? '⚠️' : '✅'} {toast.msg}
+        </div>
+      )}
+
+      {/* ── Terminate session dialog ── */}
+      {terminateTarget && (
+        <div style={S.dlgOverlay} role="dialog" aria-modal="true">
+          <div style={S.dlgBox}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>⏹</div>
+            <div style={S.dlgTitle}>End Live Session?</div>
+            <p style={S.dlgSub}>
+              This will terminate the active quiz session. Students will stop receiving questions and
+              current results will be finalized. The quiz itself will not be deleted.
+            </p>
+            <div style={S.dlgBtns}>
+              <button style={S.dlgCancel} onClick={() => setTerminateTarget(null)} disabled={terminating}>
+                Cancel
+              </button>
+              <button style={S.dlgConfirm} onClick={terminateSession} disabled={terminating}>
+                {terminating ? 'Ending…' : '⏹ End Session'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -346,4 +413,12 @@ const S = {
     whiteSpace: 'nowrap', userSelect: 'none',
   },
   skeletonBtn: { width: 72, height: 34, background: '#e2e8f0', borderRadius: 8, animation: 'pulse 1.4s ease-in-out infinite' },
+  terminateBtn: { background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fecaca', borderRadius: 8, padding: 'clamp(7px,2vw,9px) clamp(10px,2.5vw,14px)', fontWeight: 700, fontSize: 'clamp(11px,2.5vw,13px)', cursor: 'pointer', whiteSpace: 'nowrap' },
+  dlgOverlay: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, padding: 16 },
+  dlgBox:     { background: '#fff', borderRadius: 16, padding: 'clamp(24px,5vw,36px)', width: '100%', maxWidth: 400, boxShadow: '0 24px 60px rgba(0,0,0,0.25)', textAlign: 'center' },
+  dlgTitle:   { fontWeight: 800, fontSize: 18, color: '#1e293b', marginBottom: 10 },
+  dlgSub:     { color: '#64748b', fontSize: 13, marginBottom: 24, lineHeight: 1.55 },
+  dlgBtns:    { display: 'flex', gap: 10 },
+  dlgCancel:  { flex: 1, padding: '11px 0', background: '#f1f5f9', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: 10, fontWeight: 600, fontSize: 14, cursor: 'pointer' },
+  dlgConfirm: { flex: 1, padding: '11px 0', background: 'linear-gradient(135deg,#dc2626,#b91c1c)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer' },
 };
