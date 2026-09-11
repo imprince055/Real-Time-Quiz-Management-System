@@ -274,7 +274,13 @@ module.exports = function registerHandlers(io) {
             studentProgress:      session.studentProgress,
             startedAt:            session.startedAt,
             endsAt:               session.endsAt,
-            durationMinutes:      session.durationMinutes,
+            // Use session.durationMinutes if the quiz has already been started
+            // (it is copied from the quiz at start_quiz time).
+            // Fall back to session.quizId.durationMinutes for the waiting state,
+            // where session.durationMinutes is still null because start_quiz
+            // has not run yet.  This is the value the teacher sees in the
+            // waiting room and what the Start button checks.
+            durationMinutes:      session.durationMinutes ?? session.quizId.durationMinutes ?? null,
             quizTitle:            session.quizId.title,
             totalQuestions:       session.quizId.questions.length,
           });
